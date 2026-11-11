@@ -1,0 +1,7 @@
+server/.env
+mobile/.env
+node_modules/
+.expo/
+*.p8
+*.p12
+*.mobileprovision

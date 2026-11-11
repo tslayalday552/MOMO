@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "MOMO",
+    "slug": "momo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "aichat",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tmdsickazzapps.momo"
+    },
+    "android": {
+      "package": "com.tmdsickazzapps.momo",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#111111"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to securely store your session."
+        }
+      ],
+      "expo-router",
+      "react-native-purchases"
+    ],
+    "extra": {
+      "apiUrl": "https://api.example.com",
+      "revenueCatAppleApiKey": "appl_REPLACE_ME",
+      "revenueCatGoogleApiKey": "goog_REPLACE_ME",
+      "revenueCatEntitlement": "pro_access",
+      "appName": "MOMO",
+      "companyName": "TMD-sickazzapps",
+      "legalCompanyName": "TMD-sickazzapps",
+      "supportEmail": "tay75love@gmail.com"
+    }
+  }
+}
