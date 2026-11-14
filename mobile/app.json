@@ -8,14 +8,31 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tmdsickazzapps.momo"
+      "bundleIdentifier": "com.tmdsickazzapps.momo",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "usesAppleSignIn": true,
+      "entitlements": {
+        "aps-environment": "production"
+      },
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      }
     },
     "android": {
       "package": "com.tmdsickazzapps.momo",
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#111111"
-      }
+      },
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "blockedPermissions": [
+        "com.google.android.gms.permission.AD_ID"
+      ]
     },
     "web": {
       "bundler": "metro"
@@ -29,7 +46,23 @@
         }
       ],
       "expo-router",
-      "react-native-purchases"
+      "expo-apple-authentication",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
+      "@react-native-firebase/crashlytics",
+      "@react-native-firebase/messaging",
+      "@react-native-google-signin/google-signin",
+      "./plugins/withFirebaseAnalyticsNoAdId",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static",
+            "deploymentTarget": "15.1",
+            "buildReactNativeFromSource": true
+          }
+        }
+      ]
     ],
     "extra": {
       "apiUrl": "https://api.example.com",
@@ -39,7 +72,11 @@
       "appName": "MOMO",
       "companyName": "TMD-sickazzapps",
       "legalCompanyName": "TMD-sickazzapps",
-      "supportEmail": "tay75love@gmail.com"
-    }
+      "supportEmail": "tay75love@gmail.com",
+      "googleWebClientId": "REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com",
+      "googleIosClientId": "REPLACE_WITH_IOS_CLIENT_ID.apps.googleusercontent.com",
+      "privacyPolicyUrl": "https://example.com/privacy"
+    },
+    "newArchEnabled": true
   }
 }

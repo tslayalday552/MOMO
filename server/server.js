@@ -9,6 +9,8 @@ import crypto from "node:crypto";
 import pg from "pg";
 import OpenAI from "openai";
 import { z } from "zod";
+import { registerFirebaseRoutes } from "./firebase-routes.js";
+import { assertMomoUserActive } from "./firebase.js";
 
 const { Pool } = pg;
 const app = express();
@@ -32,7 +34,7 @@ const origins = (process.env.CORS_ORIGIN || "http://localhost:8080").split(",").
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 app.use(helmet());
-app.use(express.json({ limit: "256kb" }));
+app.use(express.json({ limit: "256kb", verify(req, _res, buffer) { req.rawBody = Buffer.from(buffer); } }));
 app.use(cors({
   origin(origin, cb) { if (!origin || origins.includes(origin)) return cb(null, true); cb(new Error("CORS origin not allowed")); },
   credentials: true,
@@ -97,8 +99,11 @@ async function authFromAccess(req) {
   if (!token) throw new Error("Authentication required");
   const payload = jwt.verify(decodeURIComponent(token), process.env.JWT_SECRET);
   if (payload.type && payload.type !== "access") throw new Error("Invalid access token");
+  await assertMomoUserActive(pool, payload.sub, payload.iat);
   return payload;
 }
+
+registerFirebaseRoutes(app, { pool, authMiddleware, issueAccessToken, issueRefreshToken, authCookie });
 
 app.get("/health", async (_req,res) => {
   try { await pool.query("SELECT 1"); res.json({ok:true, db:true}); }
@@ -127,8 +132,8 @@ app.post("/api/auth/login", async (req,res) => {
   const p = authSchema.safeParse(req.body);
   if (!p.success) return res.status(400).json({error:"Invalid credentials"});
   const {email,password} = p.data;
-  const r = await pool.query("SELECT id,email,password_hash FROM users WHERE email=$1", [email]);
-  if (!r.rowCount || !(await bcrypt.compare(password,r.rows[0].password_hash)))
+  const r = await pool.query("SELECT id,email,password_hash,firebase_uid FROM users WHERE email=$1", [email]);
+  if (!r.rowCount || r.rows[0].firebase_uid || !r.rows[0].password_hash || !(await bcrypt.compare(password,r.rows[0].password_hash)))
     return res.status(401).json({error:"Invalid email or password"});
   const user = {id:r.rows[0].id,email:r.rows[0].email};
   const accessToken = issueAccessToken(user);
@@ -137,19 +142,33 @@ app.post("/api/auth/login", async (req,res) => {
   res.json({user, accessToken, refreshToken});
 });
 
-app.post("/api/auth/logout", (_req,res) => { clearCookie(res); res.json({ok:true}); });
+app.post("/api/auth/logout", async (req, res) => {
+  const parsed = z.object({ refreshToken: z.string().min(40).max(200).optional() }).strict().safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({error:"Invalid logout request"});
+  if (parsed.data.refreshToken) {
+    await pool.query(
+      "UPDATE refresh_sessions SET revoked_at=now() WHERE token_hash=$1 AND revoked_at IS NULL",
+      [hashToken(parsed.data.refreshToken)]
+    );
+  }
+  clearCookie(res);
+  res.json({ok:true});
+});
 
 app.post("/api/auth/refresh", async (req,res) => {
   const schema = z.object({refreshToken:z.string().min(40).max(200)});
   const p = schema.safeParse(req.body);
   if (!p.success) return res.status(401).json({error:"Invalid refresh token"});
   const r = await pool.query(
-    `SELECT rs.id, rs.user_id, u.email
+    `SELECT rs.id, rs.user_id, rs.created_at, u.email
      FROM refresh_sessions rs JOIN users u ON u.id=rs.user_id
      WHERE rs.token_hash=$1 AND rs.revoked_at IS NULL AND rs.expires_at>now()`,
     [hashToken(p.data.refreshToken)]
   );
   if (!r.rowCount) return res.status(401).json({error:"Refresh token expired or revoked"});
+  try {
+    await assertMomoUserActive(pool, r.rows[0].user_id, new Date(r.rows[0].created_at).getTime() / 1000);
+  } catch { return res.status(401).json({error:"Account session revoked. Sign in again."}); }
   const oldId = r.rows[0].id;
   await pool.query("UPDATE refresh_sessions SET revoked_at=now() WHERE id=$1", [oldId]);
   const user = {id:r.rows[0].user_id,email:r.rows[0].email};
@@ -247,7 +266,7 @@ app.get("/api/billing/entitlements", authMiddleware, async (req,res) => {
 app.post("/api/billing/webhook", express.raw({type:"application/json"}), async (req,res) => {
   const auth = process.env.REVENUECAT_WEBHOOK_AUTH;
   if (auth && req.headers.authorization !== auth) return res.status(401).json({error:"Unauthorized"});
-  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || "");
+  const raw = req.rawBody || (Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {})));
   const signature = req.headers["x-revenuecat-webhook-signature"];
   const secret = process.env.REVENUECAT_WEBHOOK_SIGNING_SECRET;
   if (secret) {
@@ -256,7 +275,7 @@ app.post("/api/billing/webhook", express.raw({type:"application/json"}), async (
     const ts = Number(parts.t), sig = parts.v1;
     if (!ts || !sig || Math.abs(Date.now()/1000-ts)>300) return res.status(401).json({error:"Invalid signature"});
     const expected = crypto.createHmac("sha256",secret).update(`${ts}.${raw.toString()}`).digest("hex");
-    if (!crypto.timingSafeEqual(Buffer.from(expected),Buffer.from(sig))) return res.status(401).json({error:"Invalid signature"});
+    if (!/^[0-9a-f]{64}$/i.test(sig) || !crypto.timingSafeEqual(Buffer.from(expected, "hex"),Buffer.from(sig, "hex"))) return res.status(401).json({error:"Invalid signature"});
   }
   let body;
   try { body=JSON.parse(raw.toString("utf8")); } catch { return res.status(400).json({error:"Invalid JSON"}); }

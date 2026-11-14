@@ -30,6 +30,24 @@ node_modules/
 hs_err_pid*
 replay_pid*
 
-# Firebase config
+# Client config is needed by native builds; keep out of public source.
+/mobile/google-services.json
+/mobile/GoogleService-Info.plist
+
+# Server/admin secrets must NEVER enter a mobile build.
+/server/secrets/
+**/*firebase-service-account*.json
+**/*service-account-key*.json
+*.keystore
+*.jks
+.env
+.env.*
+!.env.example
+
+# Generated native projects for this Expo prebuild/CNG setup.
+/mobile/android/
+/mobile/ios/
+
+# Keep Firebase client config out of git anywhere in the repo.
 google-services.json
 GoogleService-Info.plist
